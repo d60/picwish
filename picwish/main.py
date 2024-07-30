@@ -103,7 +103,7 @@ class Enhancer:
         url = f'https://{bucket}.{accelerate}/{object}'
         return url, headers
 
-    async def create_task(self, source: str | bytes) -> tuple[str, dict]:
+    async def create_task(self, source: str | bytes, enhance_face: bool) -> tuple[str, dict]:
         if isinstance(source, str):
             source: Path = Path(source)
             filename = source.name
@@ -118,7 +118,8 @@ class Enhancer:
         oss = await self.get_oss_authorizations(filename)
         url, headers = await self._signature(filename, oss)
         response, _ = await self.request('PUT', url, data=bytes_, headers=headers)
-        scale_data = await self.get_task_id(response['data']['resource_id'])
+        type = 2 if enhance_face else 1
+        scale_data = await self.get_task_id(response['data']['resource_id'], type)
         task_id = scale_data['data']['task_id']
         while True:
             scale = await self.get_scale(task_id)
@@ -132,14 +133,15 @@ class Enhancer:
         response, _ = await self.request('GET', url, params=params, headers=self._headers)
         return response
 
-    async def get_task_id(self, resource_id: str) -> dict:
+    async def get_task_id(self, resource_id: str, type: int) -> dict:
         url = 'https://gw.aoscdn.com/app/picwish/tasks/login/scale'
         data = {
             "website": "en",
             "source_resource_id": resource_id,
             "resource_id": resource_id,
-            # "type": 2
+            "type": type
         }
+        print(type)
         response, _ = await self.request('POST', url, params=self._params, json=data, headers=self._headers)
         return response
 
@@ -148,8 +150,15 @@ class Enhancer:
         response, _ = await self.request('GET', url, params=self._params, headers=self._headers)
         return response
 
-    async def enhance(self, source: str | bytes, *, no_watermark: bool = True, quality: str = 'free') -> EnhancedImage:
-        task_id, data = await self.create_task(source)
+    async def enhance(
+        self,
+        source: str | bytes,
+        *,
+        no_watermark: bool = True,
+        quality: str = 'free',
+        enhance_face: bool = True
+    ) -> EnhancedImage:
+        task_id, data = await self.create_task(source, enhance_face)
         watermark = True
         if no_watermark:
             no_watermark = await self.get_image_url(task_id, quality)
