@@ -12,7 +12,8 @@ setup(
     name='picwish',
     version=version,
     install_requires=[
-        'httpx'
+        'httpx',
+        'filetype'
     ],
     python_requires='>=3.10',
     description='Picwish Photo Enhancer',

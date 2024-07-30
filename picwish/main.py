@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import filetype
 from httpx import AsyncClient, Response
 
 from .errors import PicwishError
@@ -19,10 +20,14 @@ class EnhancedImage:
     url: str
     watermark: bool
 
-    async def download(self, output: str) -> None:
+    async def get_bytes(self) -> bytes:
         response = await self._http.get(self.url)
+        return response.content
+
+    async def download(self, output: str) -> None:
+        bytes_ = await self.get_bytes()
         with open(output, 'wb') as f:
-            f.write(response.content)
+            f.write(bytes_)
 
 
 class Enhancer:
@@ -98,10 +103,21 @@ class Enhancer:
         url = f'https://{bucket}.{accelerate}/{object}'
         return url, headers
 
-    async def create_task(self, path: Path) -> tuple[str, dict]:
-        oss = await self.get_oss_authorizations(path.name)
-        url, headers = await self._signature(path.name, oss)
-        response, _ = await self.request('PUT', url, data=path.read_bytes(), headers=headers)
+    async def create_task(self, source: str | bytes) -> tuple[str, dict]:
+        if isinstance(source, str):
+            source: Path = Path(source)
+            filename = source.name
+            bytes_ = source.read_bytes()
+        elif isinstance(source, bytes):
+            ft = filetype.guess(source)
+            filename = f'f.{ft.extension}'
+            bytes_ = source
+        else:
+            raise TypeError('Source must be string or bytes.')
+
+        oss = await self.get_oss_authorizations(filename)
+        url, headers = await self._signature(filename, oss)
+        response, _ = await self.request('PUT', url, data=bytes_, headers=headers)
         scale_data = await self.get_task_id(response['data']['resource_id'])
         task_id = scale_data['data']['task_id']
         while True:
@@ -132,8 +148,8 @@ class Enhancer:
         response, _ = await self.request('GET', url, params=self._params, headers=self._headers)
         return response
 
-    async def enhance(self, path: str, *, no_watermark: bool = True, quality: str = 'free') -> EnhancedImage:
-        task_id, data = await self.create_task(Path(path))
+    async def enhance(self, source: str | bytes, *, no_watermark: bool = True, quality: str = 'free') -> EnhancedImage:
+        task_id, data = await self.create_task(source)
         watermark = True
         if no_watermark:
             no_watermark = await self.get_image_url(task_id, quality)
