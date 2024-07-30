@@ -4,7 +4,6 @@ import os
 if os.name == 'nt':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from .errors import PicwishError
-from .main import EnhancedImage, Enhancer
+from .main import EnhancedImage, Enhancer, PicwishError
 
-__version__ = '0.0.4'
+__version__ = '0.1.0'

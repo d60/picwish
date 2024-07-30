@@ -2,6 +2,8 @@ import asyncio
 import base64
 import json
 import mimetypes
+import random
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -10,8 +12,19 @@ from typing import Any
 import filetype
 from httpx import AsyncClient, Response
 
-from .errors import PicwishError
 from .signature import Signature
+
+
+class PicwishError(Exception):
+    """
+    Exception raised for errors related to the Picwish API.
+
+    :param status_code: The HTTP status code associated with the error.
+    :type status_code: int | None
+    """
+    def __init__(self, *args, status_code: int | None = None) -> None:
+        super().__init__(*args)
+        self.status_code = status_code
 
 
 @dataclass(frozen=True)
@@ -27,7 +40,6 @@ class EnhancedImage:
     :ivar url: The URL of the enhanced image.
     :ivar watermark: Indicates whether the image has a watermark.
     """
-
     _http: AsyncClient
     url: str
     watermark: bool
@@ -61,24 +73,36 @@ class Enhancer:
     :param token: The API token for authorization.
     :param kwargs: Optional HTTP client settings.
     """
-
+    _api_version = 'v2'
+    _base_url = 'https://gw.aoscdn.com/app/picwish'
     _product_id = 482
+    _downloads_limit = 10
     _language = 'en'
     _params = {
         'product_id': _product_id,
         'language': _language
     }
 
-    def __init__(self, token: str, **kwargs) -> None:
+    def __init__(self, sleep_duration: float = 0.5, **kwargs) -> None:
         """
         Initializes the Enhancer with the provided token and optional HTTP client settings.
 
-        :param token: The API token for authorization.
-        :type token: str
+        :param sleep_duration: The duration to sleep between progress checks.
+        :type sleep_duration: float
         :param kwargs: Optional HTTP client settings.
         """
         self.http = AsyncClient(**kwargs)
-        self.token = token
+        self.sleep_duration = sleep_duration
+        self.update_token()
+
+    def update_token(self) -> None:
+        self.token = ','.join([
+            self._api_version,
+            str(random.randint(10000000, 99999999)),
+            str(self._product_id),
+            uuid.uuid4().hex
+        ])
+        self._remaining_downloads = self._downloads_limit
 
     @property
     def _headers(self) -> dict:
@@ -92,7 +116,7 @@ class Enhancer:
             response_data = response.json()
             if 'status' in response_data and 400 <= response_data['status'] < 600:
                 message = f'status: {response_data["status"]} message: {response_data["message"]}'
-                raise PicwishError(message)
+                raise PicwishError(message, status_code=response_data["status"])
         except json.JSONDecodeError:
             response_data = response.text
         return response_data, response
@@ -107,7 +131,7 @@ class Enhancer:
         :return: A dictionary containing the OSS authorization data.
         :rtype: dict
         """
-        url = 'https://gw.aoscdn.com/app/picwish/authorizations/oss'
+        url = self._base_url + '/authorizations/oss'
         data = {'filenames': [filename]}
         response, _ = await self.request('POST', url, json=data, params=self._params, headers=self._headers)
         return response
@@ -163,30 +187,18 @@ class Enhancer:
         url = f'https://{bucket}.{accelerate}/{object}'
         return url, headers
 
-    async def create_task(self, source: str | bytes, enhance_face: bool) -> tuple[str, dict]:
+    async def create_task(self, bytes_: bytes, filename: str, enhance_face: bool) -> tuple[str, dict]:
         """
         Creates an enhancement task for the given image source.
 
-        :param source: The image source, which can be a file path or bytes.
-        :type source: str | bytes
-        :param enhance_face: Indicates whether to enhance faces in the image.
-        :type enhance_face: bool
+        :param bytes_: The image data in bytes format.
+        :type bytes_: bytes
+        :param filename: The name of the file to be enhanced.
+        :type filename: str
 
         :return: A tuple containing the task ID and the scale data.
         :rtype: tuple[str, dict]
         """
-
-        if isinstance(source, str):
-            source: Path = Path(source)
-            filename = source.name
-            bytes_ = source.read_bytes()
-        elif isinstance(source, bytes):
-            ft = filetype.guess(source)
-            filename = f'f.{ft.extension}'
-            bytes_ = source
-        else:
-            raise TypeError('Source must be string or bytes.')
-
         oss = await self.get_oss_authorizations(filename)
         url, headers = await self._signature(filename, oss)
         response, _ = await self.request('PUT', url, data=bytes_, headers=headers)
@@ -197,23 +209,24 @@ class Enhancer:
             scale = await self.get_scale(task_id)
             if scale['data']['image']:
                 return task_id, scale
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(self.sleep_duration)
 
-    async def get_image_url(self, task_id: str, pic_quality: str = 'free') -> tuple[str, dict]:
+    async def get_image_url(self, task_id: str) -> tuple[str, dict]:
         """
         Retrieves the image URL for the given task ID.
 
         :param task_id: The ID of the task.
         :type task_id: str
-        :param pic_quality: The quality of the image. Can be free or high.
-        :type pic_quality: str
 
         :return: A tuple containing the image URL and additional data.
         :rtype: tuple[str, dict]
         """
-        url = f'https://gw.aoscdn.com/app/picwish/tasks/login/image-url/scale/{task_id}'
-        params = self._params | {'pic_quality': pic_quality}
+        url = self._base_url + f'/tasks/login/image-url/scale/{task_id}'
+        params = self._params | {'pic_quality': 'free'}
         response, _ = await self.request('GET', url, params=params, headers=self._headers)
+        self._remaining_downloads -= 1
+        if self._remaining_downloads <= 0:
+            self.update_token()
         return response
 
     async def get_task_id(self, resource_id: str, type: int) -> dict:
@@ -228,7 +241,7 @@ class Enhancer:
         :return: A dictionary containing the task ID and additional data.
         :rtype: dict
         """
-        url = 'https://gw.aoscdn.com/app/picwish/tasks/login/scale'
+        url = self._base_url + '/tasks/login/scale'
         data = {
             "website": "en",
             "source_resource_id": resource_id,
@@ -248,7 +261,7 @@ class Enhancer:
         :return: A dictionary containing the scale information.
         :rtype: dict
         """
-        url = f'https://gw.aoscdn.com/app/picwish/tasks/login/scale/{task_id}'
+        url = self._base_url + f'/tasks/login/scale/{task_id}'
         response, _ = await self.request('GET', url, params=self._params, headers=self._headers)
         return response
 
@@ -257,7 +270,6 @@ class Enhancer:
         source: str | bytes,
         *,
         no_watermark: bool = True,
-        quality: str = 'free',
         enhance_face: bool = True
     ) -> EnhancedImage:
         """
@@ -268,19 +280,27 @@ class Enhancer:
         :type source: str | bytes
         :param no_watermark: Whether to remove the watermark from the image.
         :type no_watermark: bool
-        :param quality: The quality of the image. Defaults to 'free'.
-        :type quality: str
         :param enhance_face: Whether to enhance faces in the image.
         :type enhance_face: bool
 
         :return: An EnhancedImage object containing the enhanced image and watermark status.
         :rtype: EnhancedImage
         """
-        task_id, data = await self.create_task(source, enhance_face)
+
+        if isinstance(source, str):
+            source: Path = Path(source)
+            filename = source.name
+            bytes_ = source.read_bytes()
+        elif isinstance(source, bytes):
+            ft = filetype.guess(source)
+            filename = f'f.{ft.extension}'
+            bytes_ = source
+        else:
+            raise TypeError('Source must be string or bytes.')
+
+        task_id, data = await self.create_task(bytes_, filename, enhance_face)
         watermark = True
         if no_watermark:
-            no_watermark = await self.get_image_url(task_id, quality)
-            if no_watermark['status'] == 200:
-                data = no_watermark
-                watermark = False
+            watermark = False
+            data = await self.get_image_url(task_id)
         return EnhancedImage(self.http, data['data']['image'], watermark=watermark)
