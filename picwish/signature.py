@@ -23,8 +23,8 @@ class Signature:
     :type bucket: str
     :param object: The OSS object key.
     :type object: str
-    :param sub_resources: A list of sub resources for the request.
-    :type sub_resources: list
+    :param sub_resources: A dict of sub resources for the request.
+    :type sub_resources: dict
     """
     access_key_id: str
     access_key_secret: str
@@ -33,11 +33,13 @@ class Signature:
     headers: dict
     bucket: str
     object: str
-    sub_resources: list
+    sub_resources: dict
 
     def CanonicalizedOSSHeaders(self):
         """
         Generates the canonicalized OSS headers for signing.
+        Format:
+            x-oss-name1:value1\nx-oss-name2:value2\nx-oss-name3:value3
 
         :return: The canonicalized OSS headers as a string.
         :rtype: str
@@ -48,13 +50,15 @@ class Signature:
 
         l = []
         for k in keys:
-            if k.startswith("x-oss-"):
-                l.append(f"{k}:{headers[k]}")
+            if k.startswith('x-oss-'):
+                l.append(f'{k}:{headers[k]}')
         return '\n'.join(l)
 
     def CanonicalizedResource(self):
         """
         Generates the canonicalized resource string for signing.
+        Format:
+            /BucketName/ObjectName?q1=value1&q2=value2&...
 
         :return: The canonicalized resource path and query parameters as a string.
         :rtype: str
@@ -62,13 +66,22 @@ class Signature:
         resource_path = f'/{self.bucket}' if self.bucket else ''
         resource_path += f'/{self.object}' if self.object else ''
         if self.sub_resources:
-            query_params = "&".join([f"{index}={char}" for index, char in enumerate(self.sub_resources)])
-            resource_path += f"?{query_params}"
+            query_params = '&'.join([f'{k}={v}' for k, v in self.sub_resources.items()])
+            resource_path += f'?{query_params}'
         return resource_path
 
     def make_signature(self):
         """
         Creates the HMAC-SHA1 signature for the OSS request.
+        Format:
+            Base64(SHA1(
+                VERB\n
+                MD5\n
+                Content-Type\n
+                Date\n
+                CanonicalizedOSSHeaders\n
+                CanonicalizedResource
+            ))
 
         :return: The base64-encoded signature.
         :rtype: str

@@ -21,10 +21,13 @@ class PicwishError(Exception):
 
     :param status_code: The HTTP status code associated with the error.
     :type status_code: int | None
+    :param api_status: API specific error code.
+    :type api_status: int | None
     """
-    def __init__(self, *args, status_code: int | None = None) -> None:
+    def __init__(self, *args, status_code: int | None = None, api_status: int | None = None) -> None:
         super().__init__(*args)
         self.status_code = status_code
+        self.api_status = api_status
 
 
 @dataclass(frozen=True)
@@ -36,7 +39,6 @@ class EnhancedImage:
     :param url: The URL of the enhanced image.
     :param watermark: Indicates whether the image has a watermark.
 
-    :ivar _http: The HTTP client to use for requests.
     :ivar url: The URL of the enhanced image.
     :ivar watermark: Indicates whether the image has a watermark.
     """
@@ -61,16 +63,15 @@ class EnhancedImage:
         :param output: The path to the file where the image will be saved.
         :type output: str
         """
-        bytes_ = await self.get_bytes()
-        with open(output, 'wb') as f:
-            f.write(bytes_)
+        Path(output).write_bytes(await self.get_bytes())
 
 
 class Enhancer:
     """
     Provides methods to enhance images using the Picwish API.
 
-    :param token: The API token for authorization.
+    :param sleep_duration: The duration to sleep between progress checks.
+    :type sleep_duration: float
     :param kwargs: Optional HTTP client settings.
     """
     _api_version = 'v2'
@@ -112,13 +113,27 @@ class Enhancer:
 
     async def request(self, method: str, url: str, *args, **kwargs) -> tuple[Any, Response]:
         response = await self.http.request(method, url, *args, **kwargs)
+        api_status = None
+        error_message = None
         try:
             response_data = response.json()
-            if 'status' in response_data and 400 <= response_data['status'] < 600:
-                message = f'status: {response_data["status"]} message: {response_data["message"]}'
-                raise PicwishError(message, status_code=response_data["status"])
+            api_status = response_data.get('status')
+            error_message = response_data.get('message')
         except json.JSONDecodeError:
             response_data = response.text
+
+        status = response.status_code
+        if (api_status is not None and api_status != 200) or 400 <= status < 600:
+            messages = [f'status: {status}']
+
+            if api_status is not None:
+                messages.append(f'APIStatus: {response_data["status"]}')
+            if error_message is not None:
+                messages.append(f'message: {response_data["message"]}')
+            else:
+                messages.append(f'message: {response.reason_phrase}')
+            raise PicwishError(', '.join(messages), status_code=status, api_status=api_status)
+
         return response_data, response
 
     async def get_oss_authorizations(self, filename: str) -> dict:
@@ -136,7 +151,7 @@ class Enhancer:
         response, _ = await self.request('POST', url, json=data, params=self._params, headers=self._headers)
         return response
 
-    async def _signature(self, filename: str, oss: str) -> tuple[str, dict]:
+    def _signature(self, filename: str, oss: str) -> tuple[str, dict]:
         """
         Creates the necessary signature for OSS requests.
         Returns the URL and headers.
@@ -171,7 +186,6 @@ class Enhancer:
             'Content-Type': mimetypes.guess_type(filename)[0],
             'X-Oss-Callback': callback
         }
-
         signature = Signature(
             access_key_id=access_key_id,
             access_key_secret=access_key_secret,
@@ -180,7 +194,7 @@ class Enhancer:
             headers=headers,
             bucket=bucket,
             object=object,
-            sub_resources=[]
+            sub_resources={}
         ).make_signature()
 
         headers ['Authorization'] = f'OSS {access_key_id}:{signature}'
@@ -195,12 +209,14 @@ class Enhancer:
         :type bytes_: bytes
         :param filename: The name of the file to be enhanced.
         :type filename: str
+        :param enhance_face: Whether to enhance faces in the image.
+        :type enhance_face: bool
 
         :return: A tuple containing the task ID and the scale data.
         :rtype: tuple[str, dict]
         """
         oss = await self.get_oss_authorizations(filename)
-        url, headers = await self._signature(filename, oss)
+        url, headers = self._signature(filename, oss)
         response, _ = await self.request('PUT', url, data=bytes_, headers=headers)
         type = 2 if enhance_face else 1
         scale_data = await self.get_task_id(response['data']['resource_id'], type)
@@ -243,10 +259,10 @@ class Enhancer:
         """
         url = self._base_url + '/tasks/login/scale'
         data = {
-            "website": "en",
-            "source_resource_id": resource_id,
-            "resource_id": resource_id,
-            "type": type
+            'website': 'en',
+            'source_resource_id': resource_id,
+            'resource_id': resource_id,
+            'type': type
         }
         response, _ = await self.request('POST', url, params=self._params, json=data, headers=self._headers)
         return response
@@ -286,11 +302,10 @@ class Enhancer:
         :return: An EnhancedImage object containing the enhanced image and watermark status.
         :rtype: EnhancedImage
         """
-
         if isinstance(source, str):
-            source: Path = Path(source)
-            filename = source.name
-            bytes_ = source.read_bytes()
+            path: Path = Path(source)
+            filename = path.name
+            bytes_ = path.read_bytes()
         elif isinstance(source, bytes):
             ft = filetype.guess(source)
             filename = f'f.{ft.extension}'
