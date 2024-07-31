@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -18,7 +19,7 @@ class Signature:
     :param content_md5: The MD5 hash of the content.
     :type content_md5: str
     :param headers: The headers to include in the request.
-    :type headers: dict
+    :type headers: dict[str, Any]
     :param bucket: The OSS bucket name.
     :type bucket: str
     :param object: The OSS object key.
@@ -30,7 +31,7 @@ class Signature:
     access_key_secret: str
     verb: str
     content_md5: str
-    headers: dict
+    headers: dict[str, Any]
     bucket: str
     object: str
     sub_resources: dict
@@ -38,8 +39,8 @@ class Signature:
     def CanonicalizedOSSHeaders(self):
         """
         Generates the canonicalized OSS headers for signing.
-        Format:
-            x-oss-name1:value1\nx-oss-name2:value2\nx-oss-name3:value3
+
+        x-oss-name1:value1\nx-oss-name2:value2\nx-oss-name3:value3
 
         :return: The canonicalized OSS headers as a string.
         :rtype: str
@@ -57,8 +58,8 @@ class Signature:
     def CanonicalizedResource(self):
         """
         Generates the canonicalized resource string for signing.
-        Format:
-            /BucketName/ObjectName?q1=value1&q2=value2&...
+
+        /BucketName/ObjectName?q1=value1&q2=value2&...
 
         :return: The canonicalized resource path and query parameters as a string.
         :rtype: str
@@ -73,15 +74,15 @@ class Signature:
     def make_signature(self):
         """
         Creates the HMAC-SHA1 signature for the OSS request.
-        Format:
-            Base64(SHA1(
-                VERB\n
-                MD5\n
-                Content-Type\n
-                Date\n
-                CanonicalizedOSSHeaders\n
-                CanonicalizedResource
-            ))
+
+        Base64(SHA1(
+            VERB\n
+            MD5\n
+            Content-Type\n
+            Date\n
+            CanonicalizedOSSHeaders\n
+            CanonicalizedResource
+        ))
 
         :return: The base64-encoded signature.
         :rtype: str

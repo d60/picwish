@@ -6,4 +6,4 @@ if os.name == 'nt':
 
 from .main import EnhancedImage, Enhancer, PicwishError
 
-__version__ = '0.1.1'
+__version__ = '0.2.0'
