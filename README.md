@@ -3,8 +3,13 @@
 Enhance images and remove backgrounds **without tokens, accounts, or watermarks**, and enjoy **unlimited usage**!
 
 ## Features
-- **Image Enhancement**:   Improve image quality without watermark.
-- **Background Removal**:   Remove background from images.
+✅ **Image Enhancement**
+
+Improve image quality without watermark.
+
+✅ **Background Removal**:
+
+Remove background from images.
 
 ## Usage
 
