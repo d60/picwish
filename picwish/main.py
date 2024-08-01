@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import base64
 import json
@@ -12,6 +14,7 @@ from typing import Any
 import filetype
 from httpx import AsyncClient, Response
 
+from .image_models import BackgroundRemovedImage, EnhancedImage
 from .signature import Signature
 
 
@@ -31,6 +34,32 @@ class PicwishError(Exception):
         self.token = token
         self.status_code = status_code
         self.api_status = api_status
+
+
+@dataclass(frozen=True)
+class Task:
+    api: API
+    name: str
+    id: str
+
+    async def get_result(self) -> dict:
+        return await self.api.get_task_result(self.name, self.id)
+
+    async def wait(self, interval: float) -> dict:
+        """
+        Waits for the task to complete and returns the final result.
+        """
+        while True:
+            data = await self.get_result()
+            if data['data']['progress'] == 100:
+                return data
+            await asyncio.sleep(interval)
+
+    async def get_image_url(self, quality: str = 'free') -> dict:
+        """
+        Retrieves the URL of the processed image for the task.
+        """
+        return await self.api.get_image_url(self.name, self.id, quality)
 
 
 class API:
@@ -108,95 +137,68 @@ class API:
         response, _ = await self.request('POST', url, json=data, params=self._params, headers=self._headers)
         return response
 
-    async def get_task(self, resource_id: str, type: int) -> dict:
+    async def create_task(self, resource_id: str, name: str, additional_params: dict | None = None) -> Task:
         """
-        Retrieves task data for the given resource ID.
+        Creates a task for the given resource ID.
 
         :param resource_id: The ID of the resource.
         :type resource_id: str
-        :param type: The type of the task.
-        :type type: int
+        :param name: The name of the task.
+        :type name: str
+        :param additional_params: Optional additional parameters to include in the task creation request.
+        :type additional_params: dict | None
 
-        :return: A dictionary containing task data.
-        :rtype: dict
+        :return: Task object.
+        :rtype: Task
         """
-        url = self._base_url + '/tasks/login/scale'
+        url = self._base_url + '/tasks/login/' + name
         data = {
             'website': 'en',
             'source_resource_id': resource_id,
-            'resource_id': resource_id,
-            'type': type
         }
+        if additional_params is not None:
+            data |= additional_params
         response, _ = await self.request('POST', url, params=self._params, json=data, headers=self._headers)
-        return response
+        task_id = response['data']['task_id']
+        return Task(self, name, task_id)
 
-    async def image_url(self, task_id: str) -> dict:
+    async def get_image_url(self, name: str, task_id: str, quality: str) -> dict:
         """
         Retrieves the image URL for the given task ID.
 
+        :param name: The name of the task.
+        :type name: str
         :param task_id: The ID of the task.
         :type task_id: str
 
         :return: A dict containing the image URL and additional data.
         :rtype: dict
         """
-        url = self._base_url + f'/tasks/login/image-url/scale/{task_id}'
-        params = self._params | {'pic_quality': 'free'}
+        url = self._base_url + f'/tasks/login/image-url/{name}/{task_id}'
+        params = self._params | {'pic_quality': quality}
         response, _ = await self.request('GET', url, params=params, headers=self._headers)
         return response
 
-    async def get_scale(self, task_id: str) -> dict:
+    async def get_task_result(self, name: str, task_id: str) -> dict:
         """
-        Retrieves the scale information for the given task ID.
+        Retrieves the task information for the given task ID.
 
+        :param name: The name of the task.
+        :type name: str
         :param task_id: The ID of the task.
         :type task_id: str
 
-        :return: A dictionary containing the scale information.
+        :return: A dictionary containing the task information.
         :rtype: dict
         """
-        url = self._base_url + f'/tasks/login/scale/{task_id}'
+        url = self._base_url + f'/tasks/login/{name}/{task_id}'
         response, _ = await self.request('GET', url, params=self._params, headers=self._headers)
         return response
 
 
-@dataclass(frozen=True)
-class EnhancedImage:
+class PicWish:
     """
-    Represents an enhanced image.
-
-    :ivar url: The URL of the enhanced image.
-    :type url: str
-    :ivar watermark: Indicates whether the image has a watermark.
-    :type watermark: bool
-    """
-    _http: AsyncClient
-    url: str
-    watermark: bool
-
-    async def get_bytes(self) -> bytes:
-        """
-        Fetches the image bytes from the URL.
-
-        :return: The content of the image in bytes.
-        :rtype: bytes
-        """
-        response = await self._http.get(self.url)
-        return response.content
-
-    async def download(self, output: str) -> None:
-        """
-        Downloads the image and saves it to the specified file path.
-
-        :param output: The file path where the image will be saved.
-        :type output: str
-        """
-        Path(output).write_bytes(await self.get_bytes())
-
-
-class Enhancer:
-    """
-    Provides methods to enhance images using the PicWish API.
+    Provides methods to process images using the PicWish API.
 
     :param sleep_duration: The duration to sleep between progress checks, in seconds.
     :type sleep_duration: float
@@ -259,7 +261,7 @@ class Enhancer:
         return url, headers
 
     @staticmethod
-    def _process_source(source: str | bytes) -> tuple[str, bytes]:
+    def _process_source(source: str | bytes) -> tuple[str, str, bytes]:
         """
         Processes the image source and returns the filename and bytes.
 
@@ -283,6 +285,15 @@ class Enhancer:
             raise TypeError('Source must be string or bytes.')
         return filename, mimetype, bytes_
 
+    async def _base(self, source: str | bytes) -> tuple[API, str]:
+        api = API(self.http, self.retry_after)
+        filename, mimetype, bytes_ = self._process_source(source)
+        oss = await api.oss_authorizations(filename)
+        url, headers = self._signature(mimetype, oss)
+        # Upload the image with signature
+        response, _ = await api.request('PUT', url, data=bytes_, headers=headers)
+        return api, response['data']['resource_id']
+
     async def enhance(
         self,
         source: str | bytes,
@@ -300,28 +311,38 @@ class Enhancer:
         :param enhance_face: Whether to enhance faces in the image.
         :type enhance_face: bool
 
-        :return: An EnhancedImage object containing the enhanced image and watermark status.
+        :return: An EnhancedImage object.
         :rtype: EnhancedImage
         """
-        api = API(self.http, self.retry_after)
-        filename, mimetype, bytes_ = self._process_source(source)
-        oss = await api.oss_authorizations(filename)
-        url, headers = self._signature(mimetype, oss)
-        # Upload the image with signature
-        response, _ = await api.request('PUT', url, data=bytes_, headers=headers)
+        api, resource_id = await self._base(source)
         type = 2 if enhance_face else 1
-        scale_data = await api.get_task(response['data']['resource_id'], type)
-        task_id = scale_data['data']['task_id']
-
-        # Wait for the image processing to complete
-        while True:
-            data = await api.get_scale(task_id)
-            if data['data']['image']:
-                break
-            await asyncio.sleep(self.sleep_duration)
+        task = await api.create_task(resource_id, 'scale', {'type': type})
+        data = await task.wait(self.sleep_duration)
 
         watermark = True
         if no_watermark:
             watermark = False
-            data = await api.image_url(task_id)
-        return EnhancedImage(self.http, data['data']['image'], watermark=watermark)
+            data = await task.get_image_url()
+        return EnhancedImage(self.http, data['data']['image'], watermark, enhance_face)
+
+    async def remove_background(self, source: str | bytes, *, no_watermark: bool = True) -> BackgroundRemovedImage:
+        """
+        Removes the background from an image and returns an BackgroundRemovedImage object.
+
+        :param source: The image source, which can be a file path or a byte stream.
+        :type source: str | bytes
+        :param no_watermark: Whether to remove the watermark from the image.
+        :type no_watermark: bool
+
+        :return: An BackgroundRemovedImage object.
+        :rtype: BackgroundRemovedImage
+        """
+        api, resource_id = await self._base(source)
+        task = await api.create_task(resource_id, 'segmentation', {'output_type': 1})
+        data = await task.wait(self.sleep_duration)
+
+        watermark = True
+        if no_watermark:
+            watermark = False
+            data = await task.get_image_url()
+        return BackgroundRemovedImage(self.http, data['data']['image'], watermark, data['data']['mask'])
