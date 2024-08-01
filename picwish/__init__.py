@@ -7,4 +7,4 @@ if os.name == 'nt':
 from .image_models import BackgroundRemovedImage, EnhancedImage
 from .main import EnhancedImage, PicWish, PicwishError
 
-__version__ = '0.3.0'
+__version__ = '0.3.1'

@@ -137,7 +137,7 @@ class API:
         response, _ = await self.request('POST', url, json=data, params=self._params, headers=self._headers)
         return response
 
-    async def create_task(self, resource_id: str, name: str, additional_params: dict | None = None) -> Task:
+    async def create_task(self, resource_id: str, name: str, additional_params: dict | None = None) -> dict:
         """
         Creates a task for the given resource ID.
 
@@ -148,8 +148,8 @@ class API:
         :param additional_params: Optional additional parameters to include in the task creation request.
         :type additional_params: dict | None
 
-        :return: Task object.
-        :rtype: Task
+        :return: API response.
+        :rtype: dict
         """
         url = self._base_url + '/tasks/login/' + name
         data = {
@@ -159,8 +159,7 @@ class API:
         if additional_params is not None:
             data |= additional_params
         response, _ = await self.request('POST', url, params=self._params, json=data, headers=self._headers)
-        task_id = response['data']['task_id']
-        return Task(self, name, task_id)
+        return response
 
     async def get_image_url(self, name: str, task_id: str, quality: str) -> dict:
         """
@@ -210,6 +209,9 @@ class PicWish:
         self.http = AsyncClient(**kwargs)
         self.sleep_duration = sleep_duration
         self.retry_after = retry_after
+
+    def _init_api(self) -> API:
+        return API(self.http, self.retry_after)
 
     def _signature(self, mimetype: str, oss: str) -> tuple[str, dict]:
         """
@@ -285,14 +287,19 @@ class PicWish:
             raise TypeError('Source must be string or bytes.')
         return filename, mimetype, bytes_
 
-    async def _base(self, source: str | bytes) -> tuple[API, str]:
-        api = API(self.http, self.retry_after)
+    async def _get_resource_id(self, api: API, source: str | bytes) -> str:
         filename, mimetype, bytes_ = self._process_source(source)
         oss = await api.oss_authorizations(filename)
         url, headers = self._signature(mimetype, oss)
         # Upload the image with signature
         response, _ = await api.request('PUT', url, data=bytes_, headers=headers)
-        return api, response['data']['resource_id']
+        return response['data']['resource_id']
+
+    async def _create_task(self, api: API, name: str, source: str | bytes, additional_params: dict | None = None) -> Task:
+        resource_id = await self._get_resource_id(api, source)
+        task_data = await api.create_task(resource_id, name, additional_params)
+        task_id = task_data['data']['task_id']
+        return Task(api, name, task_id)
 
     async def enhance(
         self,
@@ -314,9 +321,8 @@ class PicWish:
         :return: An EnhancedImage object.
         :rtype: EnhancedImage
         """
-        api, resource_id = await self._base(source)
-        type = 2 if enhance_face else 1
-        task = await api.create_task(resource_id, 'scale', {'type': type})
+        api = self._init_api()
+        task = await self._create_task(api, 'scale', source, {'type': 2 if enhance_face else 1})
         data = await task.wait(self.sleep_duration)
 
         watermark = True
@@ -337,8 +343,8 @@ class PicWish:
         :return: An BackgroundRemovedImage object.
         :rtype: BackgroundRemovedImage
         """
-        api, resource_id = await self._base(source)
-        task = await api.create_task(resource_id, 'segmentation', {'output_type': 1})
+        api = self._init_api()
+        task = await self._create_task(api, 'segmentation', source, {'output_type': 1})
         data = await task.wait(self.sleep_duration)
 
         watermark = True
