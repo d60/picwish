@@ -3,6 +3,8 @@ from pathlib import Path
 
 from httpx import AsyncClient
 
+from .enums import OCRFormat
+
 
 @dataclass(frozen=True)
 class BaseImage:
@@ -62,3 +64,36 @@ class BackgroundRemovedImage(BaseImage):
     """
     watermark: bool
     mask: str
+
+
+@dataclass(frozen=True)
+class OCRResult(BaseImage):
+    """
+    Represents an OCR result.
+
+    :ivar url: The URL used to get OCR result.
+    :type url: str
+    :ivar format: The format of the OCR result.
+    :type format: OCRFormat
+    """
+    format: OCRFormat
+
+    async def text(self, encoding: str = 'utf-8', errors: str = 'ignore') -> str:
+        """
+        Returns the OCR result as string.
+        """
+        bytes_ = await self.get_bytes()
+        return bytes_.decode(encoding=encoding, errors=errors)
+
+
+@dataclass(frozen=True)
+class T2IResult(BaseImage):
+    """
+    Represents the result of a text-to-image.
+
+    :ivar url: The URL used to get T2I result.
+    :type url: str
+    :ivar id: The ID of the generated image.
+    :type id: str
+    """
+    id: str

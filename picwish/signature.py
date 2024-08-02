@@ -88,7 +88,7 @@ class Signature:
         :rtype: str
         """
         l = [
-            'PUT',
+            self.verb,
             self.content_md5,
             self.headers['Content-Type'],
             self.headers['X-Oss-Date'],

@@ -9,12 +9,13 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import filetype
 from httpx import AsyncClient, Response
 
-from .image_models import BackgroundRemovedImage, EnhancedImage
+from .enums import OCRFormat, OCRLanguage, T2IQuality, T2ITheme
+from .image_models import BackgroundRemovedImage, EnhancedImage, OCRResult, T2IResult
 from .signature import Signature
 
 
@@ -36,14 +37,18 @@ class PicwishError(Exception):
         self.api_status = api_status
 
 
+class CustomAPIRoute(NamedTuple):
+    task: str | None = None
+    image_url: str | None = None
+
+
 @dataclass(frozen=True)
 class Task:
     api: API
-    name: str
     id: str
 
     async def get_result(self) -> dict:
-        return await self.api.get_task_result(self.name, self.id)
+        return await self.api.get_task_result(self.id)
 
     async def wait(self, interval: float) -> dict:
         """
@@ -59,7 +64,7 @@ class Task:
         """
         Retrieves the URL of the processed image for the task.
         """
-        return await self.api.get_image_url(self.name, self.id, quality)
+        return await self.api.get_image_url(self.id, quality)
 
 
 class API:
@@ -70,6 +75,8 @@ class API:
     :type http: AsyncClient
     :param retry_after: Delay before retrying requests if a 429 error occurs.
     :type retry_after: float | None
+    :param route: Route object containing API routes.
+    :type CustomAPIRoute
     """
     _base_url = 'https://gw.aoscdn.com/app/picwish'
     _api_version = 'v2'
@@ -79,10 +86,14 @@ class API:
         'product_id': _product_id,
         'language': _language
     }
+    _user_agent = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                   'AppleWebKit/537.36 (KHTML, like Gecko) '
+                   'Chrome/126.0.0.0 Safari/537.36')
 
-    def __init__(self, http: AsyncClient, retry_after: float | None) -> None:
+    def __init__(self, http: AsyncClient, retry_after: float | None, route: CustomAPIRoute) -> None:
         self.http = http
         self.retry_after = retry_after
+        self.route = route
         self.token = ','.join([
             self._api_version,
             str(random.randint(10000000, 99999999)),
@@ -93,19 +104,22 @@ class API:
     @property
     def _headers(self) -> dict:
         return {
-            'Authorization': f'Bearer {self.token}'
+            'Authorization': f'Bearer {self.token}',
+            'User-Agent': self._user_agent
         }
 
     async def request(self, method: str, url: str, *args, **kwargs) -> tuple[Any, Response]:
         response = await self.http.request(method, url, *args, **kwargs)
+        api_status = None
+        error_message = response.reason_phrase
         try:
             response_data: dict = response.json()
             api_status = response_data.get('status')
             error_message = response_data.get('message')
         except json.JSONDecodeError:
             response_data = response.text
-            api_status = None
-            error_message = response.reason_phrase
+        except UnicodeDecodeError:
+            response_data = response.content
 
         status = response.status_code
         if (api_status is not None and api_status != 200) or 400 <= status < 600:
@@ -137,60 +151,53 @@ class API:
         response, _ = await self.request('POST', url, json=data, params=self._params, headers=self._headers)
         return response
 
-    async def create_task(self, resource_id: str, name: str, additional_params: dict | None = None) -> dict:
+    async def create_task(self, resource_id: str | None = None, additional_params: dict | None = None) -> dict:
         """
         Creates a task for the given resource ID.
 
-        :param resource_id: The ID of the resource.
-        :type resource_id: str
-        :param name: The name of the task.
-        :type name: str
         :param additional_params: Optional additional parameters to include in the task creation request.
         :type additional_params: dict | None
 
         :return: API response.
         :rtype: dict
         """
-        url = self._base_url + '/tasks/login/' + name
+        url = self._base_url + self.route.task
         data = {
-            'website': 'en',
-            'source_resource_id': resource_id,
+            'website': 'en'
         }
+        if resource_id is not None:
+            data['source_resource_id'] = resource_id
         if additional_params is not None:
             data |= additional_params
         response, _ = await self.request('POST', url, params=self._params, json=data, headers=self._headers)
         return response
 
-    async def get_image_url(self, name: str, task_id: str, quality: str) -> dict:
+    async def get_image_url(self, task_id: str, quality: str) -> dict:
         """
         Retrieves the image URL for the given task ID.
 
-        :param name: The name of the task.
-        :type name: str
         :param task_id: The ID of the task.
         :type task_id: str
 
         :return: A dict containing the image URL and additional data.
         :rtype: dict
         """
-        url = self._base_url + f'/tasks/login/image-url/{name}/{task_id}'
+        url = self._base_url + self.route.image_url + f'/{task_id}'
         params = self._params | {'pic_quality': quality}
         response, _ = await self.request('GET', url, params=params, headers=self._headers)
         return response
 
-    async def get_task_result(self, name: str, task_id: str) -> dict:
+    async def get_task_result(self, task_id: str) -> dict:
         """
         Retrieves the task information for the given task ID.
 
-        :param name: The name of the task.
-        :type name: str
         :param task_id: The ID of the task.
         :type task_id: str
 
         :return: A dictionary containing the task information.
         :rtype: dict
         """
-        url = self._base_url + f'/tasks/login/{name}/{task_id}'
+        url = self._base_url + self.route.task + f'/{task_id}'
         response, _ = await self.request('GET', url, params=self._params, headers=self._headers)
         return response
 
@@ -210,8 +217,8 @@ class PicWish:
         self.sleep_duration = sleep_duration
         self.retry_after = retry_after
 
-    def _init_api(self) -> API:
-        return API(self.http, self.retry_after)
+    def _init_api(self, route: CustomAPIRoute) -> API:
+        return API(self.http, self.retry_after, route)
 
     def _signature(self, mimetype: str, oss: str) -> tuple[str, dict]:
         """
@@ -295,11 +302,14 @@ class PicWish:
         response, _ = await api.request('PUT', url, data=bytes_, headers=headers)
         return response['data']['resource_id']
 
-    async def _create_task(self, api: API, name: str, source: str | bytes, additional_params: dict | None = None) -> Task:
-        resource_id = await self._get_resource_id(api, source)
-        task_data = await api.create_task(resource_id, name, additional_params)
+    async def _create_task(self, api: API, source: str | bytes | None = None, additional_params: dict | None = None) -> Task:
+        if source is None:
+            task_data = await api.create_task(additional_params=additional_params)
+        else:
+            resource_id = await self._get_resource_id(api, source)
+            task_data = await api.create_task(resource_id, additional_params)
         task_id = task_data['data']['task_id']
-        return Task(api, name, task_id)
+        return Task(api, task_id)
 
     async def enhance(
         self,
@@ -321,8 +331,12 @@ class PicWish:
         :return: An EnhancedImage object.
         :rtype: EnhancedImage
         """
-        api = self._init_api()
-        task = await self._create_task(api, 'scale', source, {'type': 2 if enhance_face else 1})
+        route = CustomAPIRoute(
+            task='/tasks/login/scale',
+            image_url='/tasks/login/image-url/scale'
+        )
+        api = self._init_api(route=route)
+        task = await self._create_task(api, source, {'type': 2 if enhance_face else 1})
         data = await task.wait(self.sleep_duration)
 
         watermark = True
@@ -343,8 +357,12 @@ class PicWish:
         :return: An BackgroundRemovedImage object.
         :rtype: BackgroundRemovedImage
         """
-        api = self._init_api()
-        task = await self._create_task(api, 'segmentation', source, {'output_type': 1})
+        route = CustomAPIRoute(
+            task='/tasks/login/segmentation',
+            image_url='/tasks/login/image-url/segmentation'
+        )
+        api = self._init_api(route=route)
+        task = await self._create_task(api, source, {'output_type': 1})
         data = await task.wait(self.sleep_duration)
 
         watermark = True
@@ -352,3 +370,98 @@ class PicWish:
             watermark = False
             data = await task.get_image_url()
         return BackgroundRemovedImage(self.http, data['data']['image'], watermark, data['data']['mask'])
+
+    async def ocr(
+        self,
+        source: str | bytes,
+        languages: list[OCRLanguage] | None = None,
+        format: OCRFormat = OCRFormat.TXT
+    ) -> OCRResult:
+        """
+        Performs OCR on an image and returns the result.
+        It supports specifying multiple languages for OCR and allows
+        selecting the desired output format.
+
+        :param source: The image source, which can be a file path or a byte stream.
+        :type source: str | bytes
+        :param languages: A list of OCRLanguage values representing the languages to be used for OCR.
+        :type languages: list[OCRLanguage] | None
+        :param format: The desired output format of the OCR result.
+        :type format: OCRFormat
+
+        :return: An OCRResult object containing the OCR result.
+        :rtype: OCRResult
+        """
+        if languages is None:
+            languages = [OCRLanguage.DEFAULT]
+        route = CustomAPIRoute(
+            task='/tasks/ocr',
+        )
+        api = self._init_api(route=route)
+        task = await self._create_task(api, source, {'format': format, 'task_language': ','.join(languages)})
+        data = await task.wait(self.sleep_duration)
+        return OCRResult(self.http, data['data']['image'], format)
+
+    async def text_to_image(
+        self,
+        prompt: str,
+        theme: T2ITheme,
+        width: int,
+        height: int,
+        *,
+        negative_prompt: str | None = None,
+        batch_size: int = 4,
+        quality: T2IQuality = T2IQuality.LOW,
+        max_attempts: int = 1
+    ) -> list[T2IResult]:
+        """
+        Generates images based on a text prompt and settings using AI.
+        The generated images can be customized using various parameters
+        such as the theme, dimensions, and quality.
+
+        :param prompt: The text prompt used to generate the image.
+        :type prompt: str
+        :param theme: The theme or style for the generated image.
+        :type theme: T2ITheme
+        :param width: The width of the generated image in pixels.
+        :type width: int
+        :param height: The height of the generated image in pixels.
+        :type height: int
+        :param negative_prompt: Specifies content or elements you want to avoid in the generated image.
+        :type negative_prompt: str | None
+        :param batch_size: The number of images to generate (1-4).
+        :type batch_size: int
+        :param quality: The quality setting for the image generation. low: 10-15s, high 25-30s
+        :type quality: T2IQuality
+        :param max_attempts: The maximum number of attempts to retry the request in case of failure.
+        :type max_attempts: int
+
+        :return: A list of `T2IResult` objects representing the generated images.
+        :rtype: list[T2IResult]
+        """
+        route = CustomAPIRoute(
+            task='/tasks/login/external/text-to-image'
+        )
+        api = self._init_api(route=route)
+        configs = {
+            'theme': theme.value,
+            'width': width,
+            'height': height,
+            'prompt': prompt,
+            'batch_size': batch_size,
+            'speed': quality.value,
+        }
+        if negative_prompt is not None:
+            configs['negative_prompt'] = negative_prompt
+        for i in range(max_attempts):
+            task = await self._create_task(api, additional_params=configs)
+            try:
+                data = await task.wait(self.sleep_duration)
+            except PicwishError as e:
+                if e.api_status in (-1, -10) and i + 1 < max_attempts:
+                    # Retry if the API returns a block status
+                    # and the maximum retry attempts have not been reached
+                    continue
+                raise e from e
+
+        return [T2IResult(self.http, i['url'], i['id']) for i in data['data']['images']]
