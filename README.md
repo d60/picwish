@@ -3,7 +3,7 @@
 Enhance, generate, and process images **without tokens, accounts, or watermarks**, and enjoy **unlimited usage**!
 
 ## Features
-- ✅  **Text-to-Image Generation**: Create images from text prompts with customizable themes, sizes, and quality.
+- ✅  **AI Text-to-Image Generation**: Create images from text prompts with customizable themes, sizes, and quality.
 - ✅  **Image Enhancement**: Improve image quality without watermark.
 - ✅  **Background Removal**: Remove background from images.
 - ✅  **OCR (Optical Character Recognition)**: Extract text from images with support for multiple languages and various output formats.
@@ -18,7 +18,7 @@ pip install picwish
 
 ## Quick Examples 🚀
 
-### 1. Text-to-Image Generation
+### 1. AI Text-to-Image Generation 🤖
 Generate images based on a text prompt with customizable settings:
 
 ```python

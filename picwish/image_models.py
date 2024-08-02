@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from httpx import AsyncClient
@@ -6,13 +6,14 @@ from httpx import AsyncClient
 from .enums import OCRFormat
 
 
-@dataclass(frozen=True)
+@dataclass
 class BaseImage:
     """
     Base class for processed images.
     """
     _http: AsyncClient
     url: str
+    _cached_bytes: bytes | None = field(default=None, init=False, repr=False)
 
     async def get_bytes(self) -> bytes:
         """
@@ -21,8 +22,10 @@ class BaseImage:
         :return: The content of the image in bytes.
         :rtype: bytes
         """
-        response = await self._http.get(self.url)
-        return response.content
+        if self._cached_bytes is None:
+            response = await self._http.get(self.url)
+            self._cached_bytes = response.content
+        return self._cached_bytes
 
     async def download(self, output: str) -> None:
         """
@@ -34,7 +37,7 @@ class BaseImage:
         Path(output).write_bytes(await self.get_bytes())
 
 
-@dataclass(frozen=True)
+@dataclass
 class EnhancedImage(BaseImage):
     """
     Represents an enhanced image.
@@ -50,7 +53,7 @@ class EnhancedImage(BaseImage):
     face_enhanced: bool
 
 
-@dataclass(frozen=True)
+@dataclass
 class BackgroundRemovedImage(BaseImage):
     """
     Represents an enhanced image.
@@ -66,7 +69,7 @@ class BackgroundRemovedImage(BaseImage):
     mask: str
 
 
-@dataclass(frozen=True)
+@dataclass
 class OCRResult(BaseImage):
     """
     Represents an OCR result.
@@ -86,7 +89,7 @@ class OCRResult(BaseImage):
         return bytes_.decode(encoding=encoding, errors=errors)
 
 
-@dataclass(frozen=True)
+@dataclass
 class T2IResult(BaseImage):
     """
     Represents the result of a text-to-image.

@@ -8,4 +8,4 @@ from .enums import OCRFormat, OCRLanguage, T2IQuality, T2ITheme
 from .image_models import BackgroundRemovedImage, EnhancedImage
 from .main import EnhancedImage, PicWish, PicwishError
 
-__version__ = '0.4.0'
+__version__ = '0.4.1'
