@@ -14,7 +14,7 @@ from typing import Any, NamedTuple
 import filetype
 from httpx import AsyncClient, Response
 
-from .enums import OCRFormat, OCRLanguage, T2IQuality, T2ITheme
+from .enums import OCRFormat, OCRLanguage, T2IQuality, T2ISize, T2ITheme
 from .image_models import BackgroundRemovedImage, EnhancedImage, OCRResult, T2IResult
 from .signature import Signature
 
@@ -405,10 +405,9 @@ class PicWish:
     async def text_to_image(
         self,
         prompt: str,
-        theme: T2ITheme,
-        width: int,
-        height: int,
         *,
+        theme: T2ITheme = T2ITheme.GENERAL,
+        size: T2ISize = T2ISize.HD_1_1,
         negative_prompt: str | None = None,
         batch_size: int = 4,
         quality: T2IQuality = T2IQuality.LOW,
@@ -423,10 +422,8 @@ class PicWish:
         :type prompt: str
         :param theme: The theme or style for the generated image.
         :type theme: T2ITheme
-        :param width: The width of the generated image in pixels.
-        :type width: int
-        :param height: The height of the generated image in pixels.
-        :type height: int
+        :param size: Size of image to be generated. Use T2ISize
+        :type size: T2ISize
         :param negative_prompt: Specifies content or elements you want to avoid in the generated image.
         :type negative_prompt: str | None
         :param batch_size: The number of images to generate (1-4).
@@ -445,8 +442,8 @@ class PicWish:
         api = self._init_api(route=route)
         configs = {
             'theme': theme.value,
-            'width': width,
-            'height': height,
+            'width': size[0],
+            'height': size[1],
             'prompt': prompt,
             'batch_size': batch_size,
             'speed': quality.value,

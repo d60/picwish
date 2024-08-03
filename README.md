@@ -23,17 +23,16 @@ Generate images based on a text prompt with customizable settings:
 
 ```python
 import asyncio
-from picwish import PicWish, T2ITheme, T2IQuality
+from picwish import PicWish, T2ITheme, T2IQuality, T2ISize
 
 async def main():
     picwish = PicWish()
 
     # Generate images from text prompt
     results = await picwish.text_to_image(
-        prompt='A girl',
+        prompt='A cat',
         theme=T2ITheme.ANIME,
-        width=616,
-        height=616,
+        size=T2ISize.FHD_1_1,
         batch_size=4,
         quality=T2IQuality.HIGH
     )

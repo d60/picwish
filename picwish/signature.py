@@ -1,3 +1,8 @@
+"""
+Reference - Include signatures in the Authorization header
+https://www.alibabacloud.com/help/oss/include-signatures-in-the-authorization-header-1
+"""
+
 import base64
 import hashlib
 import hmac
