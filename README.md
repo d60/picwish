@@ -30,7 +30,7 @@ async def main():
 
     # Generate images from text prompt
     results = await picwish.text_to_image(
-        prompt='A cat',
+        prompt='A girl',
         theme=T2ITheme.ANIME,
         size=T2ISize.FHD_1_1,
         batch_size=4,
