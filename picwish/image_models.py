@@ -100,3 +100,13 @@ class T2IResult(BaseImage):
     :type id: str
     """
     id: str
+
+
+@dataclass
+class ColorizeResult(BaseImage):
+    """
+    Represents the result of a colorization operation.
+
+    :ivar url: The URL used to retrieve the colorization result.
+    :type url: str
+    """

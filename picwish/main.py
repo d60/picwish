@@ -15,7 +15,7 @@ import filetype
 from httpx import AsyncClient, Response
 
 from .enums import OCRFormat, OCRLanguage, T2IQuality, T2ISize, T2ITheme
-from .image_models import BackgroundRemovedImage, EnhancedImage, OCRResult, T2IResult
+from .image_models import BackgroundRemovedImage, ColorizeResult, EnhancedImage, OCRResult, T2IResult
 from .signature import Signature
 
 
@@ -56,7 +56,7 @@ class Task:
         """
         while True:
             data = await self.get_result()
-            if data['data']['progress'] == 100:
+            if data['data'].get('image') or data['data'].get('progress') == 100:
                 return data
             await asyncio.sleep(interval)
 
@@ -462,3 +462,21 @@ class PicWish:
                 raise e from e
 
         return [T2IResult(self.http, i['url'], i['id']) for i in data['data']['images']]
+
+    async def colorize(self, source: str | bytes) -> ColorizeResult:
+        """
+        Colorizes the provided image.
+
+        :param source: The image source, which can be a file path or a byte stream.
+        :type source: str | bytes
+
+        :return: An ColorizeResult object.
+        :rtype: ColorizeResult
+        """
+        route = CustomAPIRoute(
+            task='/tasks/colorization',
+        )
+        api = self._init_api(route=route)
+        task = await self._create_task(api, source)
+        data = await task.wait(self.sleep_duration)
+        return ColorizeResult(self.http, data['data']['image'])
