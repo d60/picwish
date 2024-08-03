@@ -2,6 +2,9 @@ from enum import Enum
 
 
 class OCRLanguage(str, Enum):
+    """
+    Enum representing supported OCR languages.
+    """
     DEFAULT = 'ChinesePRC,English,Digits'
     DIGITS = 'Digits'
     ENGLISH = 'English'
@@ -31,6 +34,9 @@ class OCRLanguage(str, Enum):
 
 
 class OCRFormat(str, Enum):
+    """
+    Enum representing supported OCR output formats.
+    """
     PDF = 'pdf'
     DOCX = 'docx'
     PPTX = 'pptx'
@@ -39,11 +45,17 @@ class OCRFormat(str, Enum):
 
 
 class T2IQuality(int, Enum):
+    """
+    Enum representing text-to-image generation quality levels.
+    """
     LOW = 0
     HIGH = 1
 
 
 class T2ITheme(int, Enum):
+    """
+    Enum representing themes for text-to-image generation.
+    """
     GENERAL = 0
     DIGITAL_ART = 1
     _3D = 2
@@ -57,6 +69,9 @@ class T2ITheme(int, Enum):
 
 
 class T2ISize(tuple, Enum):
+    """
+    Enum representing supported image sizes for text-to-image generation.
+    """
     HD_1_1 = (616, 616)
     HD_3_2 = (768, 512)
     HD_4_3 = (704, 528)
