@@ -45,7 +45,7 @@ class CustomAPIRoute(NamedTuple):
 @dataclass(frozen=True)
 class Task:
     api: API
-    id: str
+    id: str  # Task ID
 
     async def get_result(self) -> dict:
         return await self.api.get_task_result(self.id)
@@ -220,7 +220,8 @@ class PicWish:
     def _init_api(self, route: CustomAPIRoute) -> API:
         return API(self.http, self.retry_after, route)
 
-    def _signature(self, mimetype: str, oss: str) -> tuple[str, dict]:
+    @staticmethod
+    def _signature(mimetype: str, oss: str) -> tuple[str, dict]:
         """
         Creates the necessary signature for OSS requests.
         Returns the URL and headers.
