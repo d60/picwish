@@ -4,6 +4,11 @@ PicWish Python
 A library designed to provide free and unlimited access to PicWish
 services such as AI image generation, image enhancement, image OCR,
 and background removal.
+
+Copyright (c) d60 2024
+
+This software is released under the MIT License.
+For more details, see https://opensource.org/licenses/MIT.
 """
 
 __version__ = '0.4.4'
