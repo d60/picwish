@@ -71,6 +71,8 @@ class T2ITheme(int, Enum):
 class T2ISize(tuple, Enum):
     """
     Enum representing supported image sizes for text-to-image generation.
+    HD = High Definition
+    FHD = Full High Definition
     """
     HD_1_1 = (616, 616)
     HD_3_2 = (768, 512)
