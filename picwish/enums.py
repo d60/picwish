@@ -66,6 +66,7 @@ class T2ITheme(int, Enum):
     PIXEL_ART = 7
     ILLUSTRATION = 8
     SKETCH = 9
+    _UNKNOWN = 10
 
 
 class T2ISize(tuple, Enum):

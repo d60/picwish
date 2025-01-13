@@ -123,7 +123,7 @@ class API:
 
         status = response.status_code
         if (api_status is not None and api_status != 200) or 400 <= status < 600:
-            if status == 429 and self.retry_after is not None:
+            if (api_status == 429 or status == 429) and self.retry_after is not None:
                 # Sleep and retry if the status is 429
                 await asyncio.sleep(self.retry_after)
                 return await self.request(method, url, *args, **kwargs)
