@@ -11,7 +11,7 @@ This software is released under the MIT License.
 For more details, see https://opensource.org/licenses/MIT.
 """
 
-__version__ = '0.4.7'
+__version__ = '0.5.0'
 __license__ = 'MIT'
 
 import asyncio

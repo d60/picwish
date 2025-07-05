@@ -1,6 +1,6 @@
 # PicWish API for Python 🎨✨
 
-Enhance, generate, and process images **without tokens, accounts, or watermarks**, and enjoy **unlimited usage**!
+Enhance, generate, and process images **without tokens, accounts, and watermarks**, and enjoy **unlimited usage**!
 
 > [!WARNING]
 > This tool uses scraping technology. Use of this tool is at your own risk.
@@ -10,7 +10,7 @@ Enhance, generate, and process images **without tokens, accounts, or watermarks*
 - ✅  **Image Enhancement**: Improve image quality without watermark.
 - ✅  **Background Removal**: Remove background from images.
 - ✅  **OCR (Optical Character Recognition)**: Extract text from images with support for multiple languages and various output formats.
-
+- ✅  **Image Expansion**: Expand images with AI.
 ## Installation
 To get started, install the `picwish` package using pip:
 
@@ -103,6 +103,28 @@ async def main():
         format=OCRFormat.PDF
     )
     print(await ocr_result.download('result.pdf'))
+
+asyncio.run(main())
+```
+
+### 5. Image Expansion
+
+```python
+import asyncio
+from picwish import PicWish
+
+async def main():
+    picwish = PicWish()
+
+    # Generate images from text prompt
+    results = await picwish.expand(
+        'input.jpg',
+        horizontal_expansion_ratio=1.5,
+        vertical_expansion_ratio=1.5
+    )
+
+    for i, result in enumerate(results):
+        await result.download(f'{i}.png')
 
 asyncio.run(main())
 ```

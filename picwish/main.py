@@ -15,7 +15,7 @@ import filetype
 from httpx import AsyncClient, Response
 
 from .enums import OCRFormat, OCRLanguage, T2IQuality, T2ISize, T2ITheme
-from .image_models import BackgroundRemovedImage, ColorizeResult, EnhancedImage, OCRResult, T2IResult
+from .image_models import BackgroundRemovedImage, ColorizeResult, EnhancedImage, ExpandedImageResult, OCRResult, T2IResult
 from .signature import Signature
 
 
@@ -56,7 +56,7 @@ class Task:
         """
         while True:
             data = await self.get_result()
-            if data['data'].get('image') or data['data'].get('progress') == 100:
+            if data.get('data', {}).get('image') or data.get('data', {}).get('progress') == 100:
                 return data
             await asyncio.sleep(interval)
 
@@ -122,7 +122,7 @@ class API:
             response_data = response.content
 
         status = response.status_code
-        if (api_status is not None and api_status != 200) or 400 <= status < 600:
+        if (api_status is not None and api_status not in (0, 200)) or 400 <= status < 600:
             if (api_status == 429 or status == 429) and self.retry_after is not None:
                 # Sleep and retry if the status is 429
                 await asyncio.sleep(self.retry_after)
@@ -481,3 +481,48 @@ class PicWish:
         task = await self._create_task(api, source)
         data = await task.wait(self.sleep_duration)
         return ColorizeResult(self.http, data['data']['image'])
+
+    async def expand(
+        self,
+        source: str | bytes,
+        horizontal_expansion_ratio: float,
+        vertical_expansion_ratio: float,
+        image_count: int = 1,
+        prompt: str | None = None,
+        negative_prompt: str | None = None
+    ) -> list[ExpandedImageResult]:
+        """
+        Expand an image with AI.
+
+        :param source: The image source, which can be a file path or a byte stream.
+        :type source: str | bytes
+        :param horizontal_expansion_ratio: Ratio by which to expand the image horizontally.
+        :type horizontal_expansion_ratio: float
+        :param vertical_expansion_ratio: Ratio by which to expand the image vertically.
+        :type vertical_expansion_ratio: float
+        :param image_count: Number of expanded image variants to generate. Default is 1.
+        :type image_count: int
+        :param prompt: Optional prompt to guide the expansion.
+        :type prompt: str | None
+        :param negative_prompt: Optional negative prompt to avoid unwanted elements in the expansion.
+        :type negative_prompt: str | None
+
+        :return: A list of ExpandedImageResult objects.
+        :rtype: list[ExpandedImageResult]
+        """
+        route = CustomAPIRoute(
+            task='/tasks/login/image-expand'
+        )
+        configs = {
+            'horizontal_expansion_ratio': horizontal_expansion_ratio,
+            'vertical_expansion_ratio': vertical_expansion_ratio,
+            'image_count': image_count
+        }
+        if prompt is not None:
+            configs['prompt'] = prompt
+        if negative_prompt is not None:
+            configs['negative_prompt'] = negative_prompt
+        api = self._init_api(route=route)
+        task = await self._create_task(api, source, additional_params=configs)
+        data = await task.wait(self.sleep_duration)
+        return [ExpandedImageResult(self.http, data['data'][f'image{i}']) for i in range(1, image_count+1)]

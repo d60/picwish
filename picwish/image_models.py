@@ -110,3 +110,13 @@ class ColorizeResult(BaseImage):
     :ivar url: The URL used to retrieve the colorization result.
     :type url: str
     """
+
+
+@dataclass
+class ExpandedImageResult(BaseImage):
+    """
+    Represents the result of a expand operation.
+
+    :ivar url: The URL used to retrieve the expanded result.
+    :type url: str
+    """
