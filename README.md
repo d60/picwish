@@ -2,9 +2,6 @@
 
 Enhance, generate, and process images **without tokens, accounts, and watermarks**, and enjoy **unlimited usage**!
 
-> [!WARNING]
-> This tool uses scraping technology. Use of this tool is at your own risk.
-
 ## Features
 - ✅  **AI Text-to-Image Generation**: Create images from text prompts with customizable themes, sizes, and quality.
 - ✅  **Image Enhancement**: Improve image quality without watermark.
