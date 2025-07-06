@@ -120,3 +120,16 @@ class ExpandedImageResult(BaseImage):
     :ivar url: The URL used to retrieve the expanded result.
     :type url: str
     """
+
+
+@dataclass
+class TranslatedImageResult(BaseImage):
+    """
+    Represents the result of image translation.
+
+    :ivar url: The URL used to retrieve the translated image.
+    :type url: str
+    :ivar language: The translation target language.
+    :type language: str
+    """
+    language: str

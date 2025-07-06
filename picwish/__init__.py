@@ -11,13 +11,23 @@ This software is released under the MIT License.
 For more details, see https://opensource.org/licenses/MIT.
 """
 
-__version__ = '0.5.0'
+__version__ = '0.6.0'
 __license__ = 'MIT'
 
 import asyncio
 import os
 
-from .enums import OCRFormat, OCRLanguage, T2IQuality, T2ISize, T2ITheme
+from .enums import (
+    ImageTranslator,
+    OCRFormat,
+    OCRLanguage,
+    T2IQuality,
+    T2ISize,
+    T2ITheme,
+    TranslateSourceLanguage,
+    TranslateTargetLanguage,
+    ImageTranslator
+)
 from .image_models import BackgroundRemovedImage, ColorizeResult, EnhancedImage, OCRResult, T2IResult
 from .main import EnhancedImage, PicWish, PicwishError
 

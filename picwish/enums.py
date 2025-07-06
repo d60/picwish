@@ -87,3 +87,45 @@ class T2ISize(tuple, Enum):
     FHD_3_4 = (768, 1024)
     FHD_16_9 = (1024, 576)
     FHD_9_16 = (576, 1024)
+
+
+class TranslateTargetLanguage(str, Enum):
+    AR = 'AR'
+    BG = 'BG'
+    CHS = 'CHS'
+    CHT = 'CHT'
+    CSY = 'CSY'
+    DEU = 'DEU'
+    ENG = 'ENG'
+    ESP = 'ESP'
+    FRA = 'FRA'
+    HUN = 'HUN'
+    ID = 'ID'
+    ITA = 'ITA'
+    JPN = 'JPN'
+    JW = 'JW'
+    KOR = 'KOR'
+    MS = 'MS'
+    MY = 'MY'
+    NLD = 'NLD'
+    PLK = 'PLK'
+    PTB = 'PTB'
+    ROM = 'ROM'
+    RUS = 'RUS'
+    TH = 'TH'
+    TL = 'TL'
+    TRK = 'TRK'
+    VIN = 'VI'
+
+
+class TranslateSourceLanguage(str, Enum):
+    CHS = 'CHS'
+    CHT = 'CHT'
+    ENG = 'ENG'
+    JPN = 'JPN'
+
+
+class ImageTranslator(str, Enum):
+    ALIYUN = 'aliyun'
+    GOOGLE = 'google'
+    PAPAGO = 'papago'

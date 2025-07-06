@@ -14,9 +14,28 @@ from typing import Any, NamedTuple
 import filetype
 from httpx import AsyncClient, Response
 
-from .enums import OCRFormat, OCRLanguage, T2IQuality, T2ISize, T2ITheme
-from .image_models import BackgroundRemovedImage, ColorizeResult, EnhancedImage, ExpandedImageResult, OCRResult, T2IResult
+from .enums import (
+    ImageTranslator,
+    OCRFormat,
+    OCRLanguage,
+    T2IQuality,
+    T2ISize,
+    T2ITheme,
+    TranslateSourceLanguage,
+    TranslateTargetLanguage
+)
+from .image_models import (
+    BackgroundRemovedImage,
+    ColorizeResult,
+    EnhancedImage,
+    ExpandedImageResult,
+    OCRResult,
+    T2IResult,
+    TranslatedImageResult
+)
 from .signature import Signature
+
+mimetypes.add_type('image/webp', '.webp')
 
 
 class PicwishError(Exception):
@@ -303,11 +322,19 @@ class PicWish:
         response, _ = await api.request('PUT', url, data=bytes_, headers=headers)
         return response['data']['resource_id']
 
-    async def _create_task(self, api: API, source: str | bytes | None = None, additional_params: dict | None = None) -> Task:
+    async def _create_task(
+        self,
+        api: API,
+        source: str | bytes | None = None,
+        additional_params: dict | None = None,
+        add_source_resource_ids: bool = False
+    ) -> Task:
         if source is None:
             task_data = await api.create_task(additional_params=additional_params)
         else:
             resource_id = await self._get_resource_id(api, source)
+            if add_source_resource_ids:
+                additional_params = (additional_params or {}) | {'source_resource_ids': [resource_id]}
             task_data = await api.create_task(resource_id, additional_params)
         task_id = task_data['data']['task_id']
         return Task(api, task_id)
@@ -526,3 +553,38 @@ class PicWish:
         task = await self._create_task(api, source, additional_params=configs)
         data = await task.wait(self.sleep_duration)
         return [ExpandedImageResult(self.http, data['data'][f'image{i}']) for i in range(1, image_count+1)]
+
+    async def translate_image(
+        self,
+        source: str | bytes,
+        source_language: TranslateSourceLanguage,
+        target_language: TranslateTargetLanguage,
+        translator: ImageTranslator = ImageTranslator.GOOGLE
+    ) -> TranslatedImageResult:
+        """
+        Translates text in the provided image from the source language to the target language.
+
+        :param source: The image source, which can be a file path or a byte stream.
+        :type source: str | bytes
+        :param source_language: The language of the text in the source image.
+        :type source_language: TranslateSourceLanguage
+        :param target_language: The language to translate the text into.
+        :type target_language: TranslateTargetLanguage
+        :param translator: The translation service to use. Default is Google.
+        :type translator: ImageTranslator
+
+        :return: A TranslatedImageResult object.
+        :rtype: TranslatedImageResult
+        """
+        route = CustomAPIRoute(
+            task='/tasks/login/external/image-translate',
+        )
+        api = self._init_api(route=route)
+        configs = {
+            'img_trans_key': translator,
+            'source_language': source_language,
+            'target_language': target_language,
+        }
+        task = await self._create_task(api, source, additional_params=configs, add_source_resource_ids=True)
+        data = await task.wait(self.sleep_duration)
+        return TranslatedImageResult(self.http, data['data']['images'][0]['image'], str(target_language))
